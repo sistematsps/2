@@ -1,0 +1,351 @@
+﻿
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<title>Sistema Administrativo - Atualizado</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0b1220;--panel:#121a2b;--muted:#a2acc7;--accent:#3b82f6;--ok:#10b981;--danger:#ef4444;--line:#22304b}
+  *{box-sizing:border-box}
+  body{font-family:Inter,system-ui,Arial,Helvetica,sans-serif;background:linear-gradient(180deg,#0b1220,#0e1627);color:#e5e7eb;margin:0}
+  .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+  .login,.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .login{padding:24px}
+  .panel{padding:16px}
+  h1,h2,h3,h4{margin:0 0 8px}
+  .muted{color:var(--muted)}
+  input,select,button,textarea{font:inherit}
+  input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);background:#0b1324;color:#e5e7eb;border-radius:10px;outline:none}
+  input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(59,130,246,.2)}
+  button{padding:10px 14px;border:0;border-radius:10px;cursor:pointer;background:var(--accent);color:#fff;font-weight:600}
+  button.ghost{background:#1a2540}
+  button.ok{background:var(--ok)}
+  button.danger{background:var(--danger)}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .col{flex:1 1 240px}
+  .small{max-width:200px}
+  .menu{display:flex;gap:8px;flex-wrap:wrap}
+  .menu button{background:#18223b}
+  .layout{display:grid;grid-template-columns:260px 1fr;gap:14px}
+  @media (max-width: 900px){.layout{grid-template-columns:1fr}}
+  .side{position:sticky;top:16px;align-self:start;padding:12px;background:#0d172e;border:1px solid var(--line);border-radius:12px}
+  .slides .slide{display:none}
+  .slides .slide.active{display:block}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid var(--line);padding:8px;text-align:center}
+  th{background:#0d172e}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#1b2a4a;color:#c8d1ea;border:1px solid #223453}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  .card{background:#0d172e;border:1px solid var(--line);border-radius:12px;padding:12px}
+  .stat{display:grid;grid-template-columns:1fr auto;gap:6px;padding:8px 10px;border-radius:10px;background:#0f1a33;border:1px solid var(--line)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="loginPanel" class="login">
+    <h2>Entrar</h2>
+    
+    <div class="row">
+      <div class="col"><input id="loginUser" placeholder="Usuário"></div>
+      <div class="col small"><input id="loginPass" type="password" placeholder="Senha"></div>
+    </div>
+    <div class="row">
+      <button onclick="doLogin()">Entrar</button>
+      <button class="ghost" onclick="demoFill()">Carregar demo</button>
+    </div>
+    <p id="loginMsg" class="muted" style="margin-top:8px"></p>
+  </div>
+
+  <div id="appPanel" class="panel" style="display:none">
+    <div class="layout">
+      <aside class="side">
+        <h3 style="margin-bottom:10px">Menu</h3>
+        <div id="menuButtons" class="menu"></div>
+        <hr style="border-color:#1b2a4a;border-style:solid;margin:12px 0">
+        <label class="muted">Sistema ativo</label>
+        <select id="systemSelect" onchange="setSistemaAtivo(this.value)">
+          <option value="PITIMBU">PITIMBU</option>
+          <option value="TIMONHA">TIMONHA</option>
+        </select>
+        <div class="toolbar">
+          <button class="ghost" onclick="syncCurrentToFirestore()">Sync → Firestore</button>
+        </div>
+      </aside>
+      <main>
+        <div id="slides" class="slides"></div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- libs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<script>
+/**************** FIREBASE (opcional) ****************/
+const firebaseConfig = { apiKey: "AIzaSyACfA9NivyAyiX_Jm-8x8DXZehqlVcbPkg", authDomain: "vendas-86b49.firebaseapp.com", projectId: "vendas-86b49" };
+let db=null;try{ if(firebaseConfig.apiKey){ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); } }catch(e){ console.warn('Firebase init falhou',e); }
+
+/**************** STATE ****************/
+const USERS={"Benedito":{senha:"1552",role:"admin"},"Pedro":{senha:"12345",role:"caixa"},"Jose":{senha:"12345",role:"caixa"}};
+let currentUser=null; let sistemaAtivo='PITIMBU';
+let dataStore={};
+function _loadLocal(){ try{dataStore=JSON.parse(localStorage.getItem('dataStore_v2')||'{}')}catch(e){dataStore={}}; if(!dataStore.PITIMBU) dataStore.PITIMBU={vendedores:{},despesas:[],receitas:[]}; if(!dataStore.TIMONHA) dataStore.TIMONHA={vendedores:{},despesas:[],receitas:[]}; }
+function _saveLocal(){ localStorage.setItem('dataStore_v2', JSON.stringify(dataStore)); }
+_loadLocal();
+
+/**************** HELPERS ****************/
+const fmt=(n)=>Number(n||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+function ensureSystem(s){ if(!dataStore[s]) dataStore[s]={vendedores:{},despesas:[],receitas:[]}; }
+function saveAndSync(){ _saveLocal(); if(db){ db.collection('sistemas').doc(sistemaAtivo).set(dataStore[sistemaAtivo]||{}).catch(console.warn); } }
+function between(date,de,ate){ if(de&&date<de) return false; if(ate&&date>ate) return false; return true; }
+function toCSV(rows){ return rows.map(r=>r.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(';')).join('\n'); }
+function download(name,content,type='text/plain'){ const blob=new Blob([content],{type}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+
+/**************** LOGIN ****************/
+function doLogin(){ const u=document.getElementById('loginUser').value.trim(); const p=document.getElementById('loginPass').value; const msg=document.getElementById('loginMsg'); if(!USERS[u]||USERS[u].senha!==p){ msg.textContent='Usuário ou senha inválidos';return;} currentUser={name:u,role:USERS[u].role}; document.getElementById('loginPanel').style.display='none'; document.getElementById('appPanel').style.display='block'; buildMenu(); showSlide(currentUser.role==='admin'?'CadastroVendedores':'Caixa'); renderAllVisible(); }
+function demoFill(){ const s='PITIMBU'; ensureSystem(s); dataStore[s].vendedores['Benedito']={cotacao:3.5,vendas:[{date:'2025-08-01',recebido:100,devolvido:0,vendido:100,apurado:350,pago:300,devendo:50},{date:'2025-08-02',recebido:50,devolvido:5,vendido:45,apurado:157.5,pago:100,devendo:57.5}]}; dataStore[s].vendedores['Pedro']={cotacao:4.0,vendas:[{date:'2025-08-01',recebido:200,devolvido:10,vendido:190,apurado:760,pago:700,devendo:60}]}; dataStore[s].despesas=[{date:'2025-08-01',descricao:'Combustível',valor:120},{date:'2025-08-03',descricao:'Aluguel',valor:300}]; dataStore[s].receitas=[{date:'2025-08-01',descricao:'Abertura de Caixa',valor:500},{date:'2025-08-02',descricao:'Depósito',valor:200}]; _saveLocal(); alert('Demo carregado para PITIMBU. Faça login para visualizar.'); }
+
+/**************** MENU / SLIDES ****************/
+const slidesContainer=document.getElementById('slides'); const menuButtons=document.getElementById('menuButtons');
+function buildMenu(){ menuButtons.innerHTML=''; let list=[]; if(currentUser.role==='admin'){ list=["SistemaAtivo","CadastroVendedores","CadastroDespesas","CadastroReceitas","Caixa","Relatorio","RelatorioFinal","Backup","ZerarSistema","Sair"]; } else { list=["CadastroDespesas","CadastroReceitas","Caixa","Relatorio","RelatorioFinal","Sair"]; }
+  list.forEach(name=>{ const b=document.createElement('button'); b.textContent=name.replace(/([A-Z])/g,' $1').trim(); b.onclick=()=>{showSlide(name);renderSlide(name)}; menuButtons.appendChild(b); if(!document.getElementById('slide-'+name)){ const d=document.createElement('div'); d.className='slide'; d.id='slide-'+name; slidesContainer.appendChild(d);} });
+  document.getElementById('systemSelect').value=sistemaAtivo;
+}
+function showSlide(name){ Array.from(slidesContainer.children).forEach(s=>s.classList.remove('active')); const el=document.getElementById('slide-'+name); if(el) el.classList.add('active'); renderSlide(name); }
+function renderSlide(name){ switch(name){ case 'SistemaAtivo':renderSistemaAtivo();break; case 'CadastroVendedores':renderCadastroVendedores();break; case 'CadastroDespesas':renderCadastroDespesas();break; case 'CadastroReceitas':renderCadastroReceitas();break; case 'Caixa':renderCaixa();break; case 'Relatorio':renderRelatorio();break; case 'RelatorioFinal':renderRelatorioFinal();break; case 'Backup':renderBackup();break; case 'ZerarSistema':renderZerarSistema();break; case 'Sair':doLogout();break; } }
+function renderAllVisible(){ const active=Array.from(slidesContainer.children).find(s=>s.classList.contains('active')); if(active){ renderSlide(active.id.replace('slide-','')); } }
+function setSistemaAtivo(v){ sistemaAtivo=v; renderAllVisible(); }
+
+/**************** SISTEMA ATIVO ****************/
+function renderSistemaAtivo(){ ensureSystem(sistemaAtivo); const el=document.getElementById('slide-SistemaAtivo'); el.innerHTML=`
+  <div class="card">
+    <h3>Sistema Ativo</h3>
+    <p class="muted">Gerencie dados separados por sistema.</p>
+    <div class="row">
+      <div class="col small">
+        <select id="selSystems">
+          <option ${sistemaAtivo==='PITIMBU'?'selected':''} value="PITIMBU">PITIMBU</option>
+          <option ${sistemaAtivo==='TIMONHA'?'selected':''} value="TIMONHA">TIMONHA</option>
+        </select>
+      </div>
+      <div class="col small" style="align-self:end"><button onclick="switchSystem()">Trocar</button></div>
+      <div class="col small" style="align-self:end"><button class="ghost" onclick="downloadSystemJSON()">Baixar JSON</button></div>
+    </div>
+  </div>`; }
+function switchSystem(){ const v=document.getElementById('selSystems').value; sistemaAtivo=v; document.getElementById('systemSelect').value=v; renderAllVisible(); }
+function downloadSystemJSON(){ const data=dataStore[sistemaAtivo]; download(`backup_${sistemaAtivo}.json`, JSON.stringify(data,null,2), 'application/json'); }
+
+/**************** VENDEDORES ****************/
+function renderCadastroVendedores(){ ensureSystem(sistemaAtivo); const el=document.getElementById('slide-CadastroVendedores'); el.innerHTML=`
+  <div class="card">
+    <h3>Cadastro de Vendedores - ${sistemaAtivo}</h3>
+    <div class="row">
+      <div class="col"><input id="venNome" placeholder="Nome"></div>
+      <div class="col small"><input id="venCot" type="number" placeholder="Cotação" step="0.01" min="0"></div>
+      <div class="col small" style="align-self:end"><button onclick="addVendedor()">Salvar Vendedor</button></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="col" style="max-width:340px">
+      <div class="card">
+        <h4>Vendedores</h4>
+        <ul id="venList" class="list"></ul>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card" id="venRight"><em class="muted">Selecione um vendedor para lançar vendas.</em></div>
+    </div>
+  </div>`; renderVendedorList(); }
+function addVendedor(){ const nome=document.getElementById('venNome').value.trim(); const cot=parseFloat(document.getElementById('venCot').value); if(!nome){alert('Informe o nome');return} if(!(cot>=0)){alert('Cotação inválida');return} const vends=dataStore[sistemaAtivo].vendedores; if(vends[nome]){alert('Vendedor já existe');return} vends[nome]={cotacao:cot,vendas:[]}; saveAndSync(); renderVendedorList(); document.getElementById('venNome').value=''; document.getElementById('venCot').value=''; }
+function renderVendedorList(){ const ul=document.getElementById('venList'); ul.innerHTML=''; const vends=dataStore[sistemaAtivo].vendedores; Object.keys(vends).forEach(n=>{ const li=document.createElement('li'); li.innerHTML=`<span style="cursor:pointer" onclick="openVendedor('${n}')">${n}</span><div class="toolbar"><button class="ghost" onclick="openVendedor('${n}')">Abrir</button><button class="danger" onclick="delVendConfirm('${n}')">Excluir</button></div>`; ul.appendChild(li); }); }
+function delVendConfirm(n){ if(!confirm('Excluir vendedor e todas as vendas?'))return; delete dataStore[sistemaAtivo].vendedores[n]; saveAndSync(); renderVendedorList(); document.getElementById('venRight').innerHTML='<em class="muted">Selecione um vendedor para lançar vendas.</em>'; }
+function openVendedor(nome){ const v=dataStore[sistemaAtivo].vendedores[nome]; const right=document.getElementById('venRight'); right.innerHTML=`
+  <div class="row"><div class="col small"><label class="muted">Cotação</label><input id="venCotEdit" type="number" step="0.01" min="0" value="${v.cotacao}"></div><div class="col small" style="align-self:end"><button onclick="saveCotacao('${nome}')">Salvar Cotação</button></div></div>
+  <div class="toolbar"><button class="ok" onclick="addVendaLinha('${nome}')">Adicionar Linha</button><button class="ghost" onclick="exportVendasCSV('${nome}')">Exportar CSV</button></div>
+  <table id="tabVendas"><thead><tr><th>Data</th><th>Recebido</th><th>Devolvido</th><th>Vendido</th><th>Apurado</th><th>Pago</th><th>Devendo</th><th>Ações</th></tr></thead><tbody></tbody></table>
+  <div class="muted" style="margin-top:6px">Fórmulas: vendido = recebido − devolvido · apurado = vendido × cotação · devendo = apurado − pago</div>
+  `; renderVendasTable(nome); }
+function saveCotacao(nome){ const val=parseFloat(document.getElementById('venCotEdit').value); if(!(val>=0)){alert('Cotação inválida');return} dataStore[sistemaAtivo].vendedores[nome].cotacao=val; saveAndSync(); openVendedor(nome); }
+function renderVendasTable(nome){ const tbody=document.querySelector('#tabVendas tbody'); tbody.innerHTML=''; const ven=dataStore[sistemaAtivo].vendedores[nome]; (ven.vendas||[]).forEach((r,i)=>{ const tr=document.createElement('tr'); tr.innerHTML=`
+    <td><input type="date" value="${r.date||''}" onchange="updVenda('${nome}',${i},'date',this.value)"></td>
+    <td><input type="number" step="0.01" value="${r.recebido||0}" onchange="updVenda('${nome}',${i},'recebido',this.value)"></td>
+    <td><input type="number" step="0.01" value="${r.devolvido||0}" onchange="updVenda('${nome}',${i},'devolvido',this.value)"></td>
+    <td>${Number(r.vendido||0).toFixed(2)}</td>
+    <td>${Number(r.apurado||0).toFixed(2)}</td>
+    <td><input type="number" step="0.01" value="${r.pago||0}" onchange="updVenda('${nome}',${i},'pago',this.value)"></td>
+    <td>${Number(r.devendo||0).toFixed(2)}</td>
+    <td><button class="danger" onclick="delVenda('${nome}',${i})">Excluir</button></td>`; tbody.appendChild(tr); }); }
+function addVendaLinha(nome){ const v=dataStore[sistemaAtivo].vendedores[nome]; v.vendas.push({date:'',recebido:0,devolvido:0,vendido:0,apurado:0,pago:0,devendo:0}); saveAndSync(); renderVendasTable(nome); }
+function delVenda(nome,i){ dataStore[sistemaAtivo].vendedores[nome].vendas.splice(i,1); saveAndSync(); renderVendasTable(nome); }
+function updVenda(nome,i,field,val){ const v=dataStore[sistemaAtivo].vendedores[nome]; const row=v.vendas[i]; if(['recebido','devolvido','pago'].includes(field)) row[field]=parseFloat(val)||0; else row[field]=val; row.vendido=(row.recebido||0)-(row.devolvido||0); row.apurado=row.vendido*(v.cotacao||0); row.devendo=(row.apurado||0)-(row.pago||0); saveAndSync(); renderVendasTable(nome); }
+function exportVendasCSV(nome){ const v=dataStore[sistemaAtivo].vendedores[nome]; const rows=[["Vendedor","Data","Recebido","Devolvido","Vendido","Apurado","Pago","Devendo"]]; (v.vendas||[]).forEach(r=>rows.push([nome,r.date,r.recebido,r.devolvido,r.vendido,r.apurado,r.pago,r.devendo])); download(`vendas_${sistemaAtivo}_${nome}.csv`, toCSV(rows), 'text/csv'); }
+
+/**************** DESPESAS ****************/
+function renderCadastroDespesas(){ ensureSystem(sistemaAtivo); const el=document.getElementById('slide-CadastroDespesas'); el.innerHTML=`
+  <div class="card"><h3>Despesas - ${sistemaAtivo}</h3>
+    <div class="row">
+      <div class="col small"><input id="despData" type="date"></div>
+      <div class="col"><input id="despDesc" placeholder="Descrição"></div>
+      <div class="col small"><input id="despValor" type="number" step="0.01" placeholder="Valor"></div>
+      <div class="col small" style="align-self:end"><button onclick="salvarDespesa()">Salvar</button></div>
+    </div>
+    <div class="toolbar"><button class="ghost" onclick="exportDespesasCSV()">Exportar CSV</button></div>
+    <table id="tabDespesas"><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Ações</th></tr></thead><tbody></tbody></table>
+  </div>`; renderTabDespesas(); }
+function salvarDespesa(){ const d=document.getElementById('despData').value; const ds=document.getElementById('despDesc').value.trim(); const v=parseFloat(document.getElementById('despValor').value); if(!d||!ds||!(v>=0)){alert('Preencha data, descrição e valor');return} dataStore[sistemaAtivo].despesas.push({date:d,descricao:ds,valor:v}); saveAndSync(); renderTabDespesas(); document.getElementById('despData').value=''; document.getElementById('despDesc').value=''; document.getElementById('despValor').value=''; }
+function renderTabDespesas(){ const tb=document.querySelector('#tabDespesas tbody'); tb.innerHTML=''; (dataStore[sistemaAtivo].despesas||[]).forEach((r,i)=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.date}</td><td>${r.descricao}</td><td>${fmt(r.valor)}</td><td><button class="danger" onclick="delDespesa(${i})">Excluir</button></td>`; tb.appendChild(tr); }); }
+function delDespesa(i){ dataStore[sistemaAtivo].despesas.splice(i,1); saveAndSync(); renderTabDespesas(); }
+function exportDespesasCSV(){ const rows=[["Data","Descrição","Valor"]]; (dataStore[sistemaAtivo].despesas||[]).forEach(r=>rows.push([r.date,r.descricao,r.valor])); download(`despesas_${sistemaAtivo}.csv`, toCSV(rows),'text/csv'); }
+
+/**************** RECEITAS ****************/
+function renderCadastroReceitas(){ ensureSystem(sistemaAtivo); const el=document.getElementById('slide-CadastroReceitas'); el.innerHTML=`
+  <div class="card"><h3>Receitas - ${sistemaAtivo}</h3>
+    <div class="row">
+      <div class="col small"><input id="recData" type="date"></div>
+      <div class="col"><input id="recDesc" placeholder="Descrição"></div>
+      <div class="col small"><input id="recValor" type="number" step="0.01" placeholder="Valor"></div>
+      <div class="col small" style="align-self:end"><button onclick="salvarReceita()">Salvar</button></div>
+    </div>
+    <div class="toolbar"><button class="ghost" onclick="exportReceitasCSV()">Exportar CSV</button></div>
+    <table id="tabReceitas"><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Ações</th></tr></thead><tbody></tbody><tfoot><tr><td colspan="2" style="text-align:right;font-weight:700">Total</td><td id="totalReceitasCell">R$ 0,00</td><td></td></tr></tfoot></table>
+  </div>`; renderTabReceitas(); }
+function salvarReceita(){ const d=document.getElementById('recData').value; const ds=document.getElementById('recDesc').value.trim(); const v=parseFloat(document.getElementById('recValor').value); if(!d||!ds||!(v>=0)){alert('Preencha data, descrição e valor');return} dataStore[sistemaAtivo].receitas.push({date:d,descricao:ds,valor:v}); saveAndSync(); renderTabReceitas(); document.getElementById('recData').value=''; document.getElementById('recDesc').value=''; document.getElementById('recValor').value=''; }
+function renderTabReceitas(){ const tb=document.querySelector('#tabReceitas tbody'); tb.innerHTML=''; let total=0; (dataStore[sistemaAtivo].receitas||[]).forEach((r,i)=>{ total+=r.valor; const tr=document.createElement('tr'); tr.innerHTML=`<td>${r.date}</td><td>${r.descricao}</td><td>${fmt(r.valor)}</td><td><button class="danger" onclick="delReceita(${i})">Excluir</button></td>`; tb.appendChild(tr); }); document.getElementById('totalReceitasCell').textContent=fmt(total); }
+function delReceita(i){ dataStore[sistemaAtivo].receitas.splice(i,1); saveAndSync(); renderTabReceitas(); }
+function exportReceitasCSV(){ const rows=[["Data","Descrição","Valor"]]; (dataStore[sistemaAtivo].receitas||[]).forEach(r=>rows.push([r.date,r.descricao,r.valor])); download(`receitas_${sistemaAtivo}.csv`, toCSV(rows),'text/csv'); }
+
+/**************** CAIXA ****************/
+let caixaChart=null;
+function renderCaixa(){ ensureSystem(sistemaAtivo); const el=document.getElementById('slide-Caixa'); el.innerHTML=`
+  <div class="card">
+    <h3>Caixa - ${sistemaAtivo}</h3>
+    <div class="row">
+      <div class="col small"><label class="muted">De</label><input id="cxDe" type="date"></div>
+      <div class="col small"><label class="muted">Até</label><input id="cxAte" type="date"></div>
+      <div class="col small" style="align-self:end"><button onclick="updateCaixa()">Filtrar</button></div>
+      <div class="col small" style="align-self:end"><button class="ghost" onclick="exportResumoCSV()">Exportar Resumo CSV</button></div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <div class="col stat"><span>Saldo Anterior (Receitas)</span><strong id="cxReceitas">R$ 0,00</strong></div>
+      <div class="col stat"><span>Apurado (Vendedores)</span><strong id="cxApurado">R$ 0,00</strong></div>
+      <div class="col stat"><span>Despesas</span><strong id="cxDespesas">R$ 0,00</strong></div>
+      <div class="col stat"><span>Saldo Final</span><strong id="cxFinal">R$ 0,00</strong></div>
+    </div>
+    <div class="card" style="margin-top:10px">
+      <canvas id="cxChart" height="90"></canvas>
+    </div>
+    <hr>
+    <h4>Resumo de Vendas (filtrado)</h4>
+    <table id="tabResumo"><thead><tr><th>Vendedor</th><th>Data</th><th>Recebido</th><th>Devolvido</th><th>Vendido</th><th>Apurado</th><th>Pago</th><th>Devendo</th></tr></thead><tbody></tbody></table>
+    <div class="muted" style="margin-top:6px">Partilha conforme sistema ativo.</div>
+  </div>`; updateCaixa(); }
+function updateCaixa(){ const de=document.getElementById('cxDe').value; const ate=document.getElementById('cxAte').value; const rec=dataStore[sistemaAtivo].receitas||[]; const des=dataStore[sistemaAtivo].despesas||[]; const ven=dataStore[sistemaAtivo].vendedores||{};
+  const totalReceitas=rec.reduce((s,r)=>s+(r.valor||0),0); const totalDespesas=des.reduce((s,r)=>s+(r.valor||0),0);
+  let totalApurado=0; const rows=[]; Object.entries(ven).forEach(([nome,v])=>{ (v.vendas||[]).forEach(row=>{ if(between(row.date,de,ate)){ totalApurado+=row.apurado||0; rows.push([nome,row.date,row.recebido,row.devolvido,row.vendido,row.apurado,row.pago,row.devendo]); } }); });
+  const saldoFinal=totalReceitas+totalApurado-totalDespesas; document.getElementById('cxReceitas').textContent=fmt(totalReceitas); document.getElementById('cxApurado').textContent=fmt(totalApurado); document.getElementById('cxDespesas').textContent=fmt(totalDespesas); document.getElementById('cxFinal').textContent=fmt(saldoFinal);
+  const tb=document.querySelector('#tabResumo tbody'); tb.innerHTML=''; rows.forEach(r=>{ const tr=document.createElement('tr'); tr.innerHTML=`<td>${r[0]}</td><td>${r[1]}</td><td>${Number(r[2]||0).toFixed(2)}</td><td>${Number(r[3]||0).toFixed(2)}</td><td>${Number(r[4]||0).toFixed(2)}</td><td>${Number(r[5]||0).toFixed(2)}</td><td>${Number(r[6]||0).toFixed(2)}</td><td>${Number(r[7]||0).toFixed(2)}</td>`; tb.appendChild(tr); });
+  // Gráfico (Receitas vs Apurado vs Despesas)
+  const ctx=document.getElementById('cxChart'); const data={labels:['Receitas','Apurado','Despesas','Saldo Final'], datasets:[{label:'Valores', data:[totalReceitas,totalApurado,totalDespesas,saldoFinal]}]}; if(caixaChart){caixaChart.destroy()} caixaChart=new Chart(ctx,{type:'bar',data,options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+}
+function exportResumoCSV(){ const de=document.getElementById('cxDe').value; const ate=document.getElementById('cxAte').value; const ven=dataStore[sistemaAtivo].vendedores||{}; const rows=[["Vendedor","Data","Recebido","Devolvido","Vendido","Apurado","Pago","Devendo"]]; Object.entries(ven).forEach(([n,v])=>{ (v.vendas||[]).forEach(r=>{ if(between(r.date,de,ate)) rows.push([n,r.date,r.recebido,r.devolvido,r.vendido,r.apurado,r.pago,r.devendo]); }); }); download(`resumo_vendas_${sistemaAtivo}.csv`, toCSV(rows), 'text/csv'); }
+
+/**************** RELATÓRIO DETALHADO ****************/
+let relChart=null;
+function renderRelatorio(){ const el=document.getElementById('slide-Relatorio'); const vendors=Object.keys(dataStore[sistemaAtivo].vendedores||{}); el.innerHTML=`
+  <div class="card"><h3>Relatório Detalhado</h3>
+    <div class="row">
+      <div class="col small"><label class="muted">Sistema</label><select id="relSis"><option ${sistemaAtivo==='PITIMBU'?'selected':''} value="PITIMBU">PITIMBU</option><option ${sistemaAtivo==='TIMONHA'?'selected':''} value="TIMONHA">TIMONHA</option></select></div>
+      <div class="col small"><label class="muted">Vendedor</label><select id="relVend"><option value="">Todos</option>${vendors.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+      <div class="col small"><label class="muted">De</label><input id="relDe" type="date"></div>
+      <div class="col small"><label class="muted">Até</label><input id="relAte" type="date"></div>
+      <div class="col small" style="align-self:end"><button onclick="buildRel()">Filtrar</button></div>
+      <div class="col small" style="align-self:end"><button class="ghost" onclick="exportRelCSV()">Exportar CSV</button></div>
+      <div class="col small" style="align-self:end"><button onclick="exportRelPDF()">Exportar PDF</button></div>
+    </div>
+    <div class="card" style="margin-top:10px"><canvas id="relChart" height="90"></canvas></div>
+    <table id="tabRel"><thead><tr><th>Vendedor</th><th>Data</th><th>Vendido</th><th>Apurado</th></tr></thead><tbody></tbody></table>
+    <h4 style="margin-top:10px">Apurado por vendedor</h4>
+    <div id="relApurado"></div>
+  </div>`; }
+function buildRel(){ const sys=document.getElementById('relSis').value; const vend=document.getElementById('relVend').value; const de=document.getElementById('relDe').value; const ate=document.getElementById('relAte').value; const tb=document.querySelector('#tabRel tbody'); tb.innerHTML=''; const ap={}; const labels=[]; const series=[]; Object.entries(dataStore[sys].vendedores||{}).forEach(([nome,v])=>{ if(vend && vend!==nome) return; (v.vendas||[]).forEach(r=>{ if(between(r.date,de,ate)){ const tr=document.createElement('tr'); tr.innerHTML=`<td>${nome}</td><td>${r.date}</td><td>${Number(r.vendido||0).toFixed(2)}</td><td>${Number(r.apurado||0).toFixed(2)}</td>`; tb.appendChild(tr); ap[nome]=(ap[nome]||0)+(r.apurado||0); } }); }); const apDiv=document.getElementById('relApurado'); apDiv.innerHTML=Object.keys(ap).length?Object.entries(ap).map(([k,v])=>`<p>${k}: <strong>${fmt(v)}</strong></p>`).join(''):'<p class="muted">Sem dados</p>';
+  // chart
+  const ctx=document.getElementById('relChart'); const ds=Object.entries(ap); ds.forEach(([k,v])=>{labels.push(k);series.push(v)}); if(relChart) relChart.destroy(); relChart=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Apurado',data:series}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+}
+function exportRelCSV(){ const rows=[["Vendedor","Data","Vendido","Apurado"]]; document.querySelectorAll('#tabRel tbody tr').forEach(tr=>{ const cols=[...tr.children].map(td=>td.textContent); rows.push(cols); }); download(`relatorio_${sistemaAtivo}.csv`, toCSV(rows),'text/csv'); }
+function exportRelPDF(){ buildRel(); const {jsPDF}=window.jspdf; const doc=new jsPDF(); doc.setFontSize(14); doc.text('Relatório Detalhado',10,10); let y=20; document.querySelectorAll('#tabRel tbody tr').forEach(tr=>{ const cols=[...tr.children].map(td=>td.textContent); doc.text(`${cols[0]} | ${cols[1]} | ${cols[2]} | ${cols[3]}`,10,y); y+=6; if(y>270){doc.addPage(); y=20;} }); y+=6; doc.text('Apurado por vendedor:',10,y); y+=6; doc.text(document.getElementById('relApurado').innerText||'',10,y); doc.save(`relatorio_${sistemaAtivo}.pdf`); }
+
+/**************** RELATÓRIO FINAL ****************/
+let finalChart=null;
+function renderRelatorioFinal(){ const el=document.getElementById('slide-RelatorioFinal'); el.innerHTML=`
+  <div class="card"><h3>Relatório Final - ${sistemaAtivo}</h3>
+    <div class="row">
+      <div class="col small"><label class="muted">De</label><input id="rfDe" type="date"></div>
+      <div class="col small"><label class="muted">Até</label><input id="rfAte" type="date"></div>
+      <div class="col small" style="align-self:end"><button onclick="buildRelFinal()">Gerar</button></div>
+      <div class="col small" style="align-self:end"><button class="ghost" onclick="exportRelFinalCSV()">Exportar CSV</button></div>
+      <div class="col small" style="align-self:end"><button onclick="exportRelFinalPDF()">Exportar PDF</button></div>
+    </div>
+    <div id="rfContent" style="margin-top:10px"></div>
+    <div class="card" style="margin-top:10px"><canvas id="rfChart" height="90"></canvas></div>
+  </div>`; }
+function buildRelFinal(){ const de=document.getElementById('rfDe').value; const ate=document.getElementById('rfAte').value; const vends=dataStore[sistemaAtivo].vendedores||{}; const deps=dataStore[sistemaAtivo].despesas||[]; const recs=dataStore[sistemaAtivo].receitas||[]; let totalAp=0,totalDes=0,totalRec=0; let vendasTable=`<h4>Vendas</h4><table><thead><tr><th>Vendedor</th><th>Data</th><th>Recebido</th><th>Devolvido</th><th>Vendido</th><th>Apurado</th><th>Pago</th><th>Devendo</th></tr></thead><tbody>`; Object.entries(vends).forEach(([n,v])=>{ (v.vendas||[]).forEach(r=>{ if(between(r.date,de,ate)){ vendasTable+=`<tr><td>${n}</td><td>${r.date}</td><td>${Number(r.recebido||0).toFixed(2)}</td><td>${Number(r.devolvido||0).toFixed(2)}</td><td>${Number(r.vendido||0).toFixed(2)}</td><td>${Number(r.apurado||0).toFixed(2)}</td><td>${Number(r.pago||0).toFixed(2)}</td><td>${Number(r.devendo||0).toFixed(2)}</td></tr>`; totalAp+=r.apurado||0; } }); }); vendasTable+='</tbody></table>';
+  let depTable=`<h4>Despesas</h4><table><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>`; deps.forEach(d=>{ if(between(d.date,de,ate)){ depTable+=`<tr><td>${d.date}</td><td>${d.descricao}</td><td>${fmt(d.valor)}</td></tr>`; totalDes+=d.valor||0; } }); depTable+='</tbody></table>';
+  let recTable=`<h4>Receitas</h4><table><thead><tr><th>Data</th><th>Descrição</th><th>Valor</th></tr></thead><tbody>`; recs.forEach(r=>{ if(between(r.date,de,ate)){ recTable+=`<tr><td>${r.date}</td><td>${r.descricao}</td><td>${fmt(r.valor)}</td></tr>`; totalRec+=r.valor||0; } }); recTable+='</tbody></table>';
+  const saldoFinal=totalRec+totalAp-totalDes; let part={Jose:0,Benedito:0,Pedro:0}; if(sistemaAtivo==='PITIMBU'){ part.Jose=saldoFinal*0.25; part.Benedito=saldoFinal*0.25; part.Pedro=saldoFinal*0.5; } else { part.Benedito=saldoFinal*0.10; part.Pedro=saldoFinal*0.90; }
+  const caixaHtml=`<h4>Caixa</h4><div class="row"><div class="col stat"><span>Saldo Anterior (Receitas)</span><strong>${fmt(totalRec)}</strong></div><div class="col stat"><span>Apurado (Vendas)</span><strong>${fmt(totalAp)}</strong></div><div class="col stat"><span>Despesas</span><strong>${fmt(totalDes)}</strong></div><div class="col stat"><span>Saldo Final</span><strong>${fmt(saldoFinal)}</strong></div></div><p class="muted" style="margin-top:8px">Partilha — José: <b>${fmt(part.Jose)}</b> | Benedito: <b>${fmt(part.Benedito)}</b> | Pedro: <b>${fmt(part.Pedro)}</b></p>`;
+  document.getElementById('rfContent').innerHTML=vendasTable+depTable+recTable+caixaHtml;
+  // Chart
+  const ctx=document.getElementById('rfChart'); const labels=['Receitas','Apurado','Despesas','Saldo Final']; const data=[totalRec,totalAp,totalDes,saldoFinal]; if(finalChart) finalChart.destroy(); finalChart=new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Valores',data}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true}}}});
+}
+function exportRelFinalCSV(){ buildRelFinal(); // exporta 4 blocos em um CSV simples
+  const rows=[["Bloco","Coluna1","Coluna2","Coluna3","Coluna4","Coluna5","Coluna6","Coluna7","Coluna8"]]; document.querySelectorAll('#rfContent table').forEach((t,ti)=>{ const title=t.previousSibling && t.previousSibling.tagName==='H4' ? t.previousSibling.innerText : `Tabela ${ti+1}`; rows.push([title]); t.querySelectorAll('tr').forEach(tr=>{ rows.push(["",...Array.from(tr.children).map(td=>td.textContent)]); }); }); download(`relatorio_final_${sistemaAtivo}.csv`, toCSV(rows),'text/csv'); }
+function exportRelFinalPDF(){ buildRelFinal(); const {jsPDF}=window.jspdf; const doc=new jsPDF(); doc.setFontSize(14); doc.text(`Relatório Final - ${sistemaAtivo}`,10,10); let y=20; const lines=document.getElementById('rfContent').innerText.split('\n'); lines.forEach(l=>{ doc.text(l,10,y); y+=6; if(y>270){doc.addPage(); y=20;} }); doc.save(`relatorio_final_${sistemaAtivo}.pdf`); }
+
+/**************** BACKUP ****************/
+function renderBackup(){ const el=document.getElementById('slide-Backup'); el.innerHTML=`
+  <div class="card"><h3>Backup / Restaurar</h3>
+    <div class="toolbar">
+      <button onclick="exportSystemJSON()">Exportar sistema ativo</button>
+      <button class="ghost" onclick="exportAllJSON()">Exportar todos</button>
+    </div>
+    <div class="toolbar">
+      <input type="file" id="fileRestore" accept=".json">
+      <button class="ok" onclick="importJSONFileSystem()">Restaurar arquivo → sistema ativo</button>
+      <button class="ghost" onclick="importJSONFileAll()">Restaurar arquivo → todos</button>
+    </div>
+    <div class="toolbar">
+      <button onclick="restoreFromFirestore()">Recuperar do Firestore (sistema ativo)</button>
+    </div>
+  </div>`; }
+function exportSystemJSON(){ download(`backup_${sistemaAtivo}.json`, JSON.stringify(dataStore[sistemaAtivo]||{},null,2),'application/json'); }
+function exportAllJSON(){ download(`backup_all.json`, JSON.stringify(dataStore,null,2),'application/json'); }
+function importJSONFileSystem(){ const f=document.getElementById('fileRestore').files[0]; if(!f) return alert('Selecione um arquivo'); const r=new FileReader(); r.onload=e=>{ try{ dataStore[sistemaAtivo]=JSON.parse(e.target.result)||{vendedores:{},despesas:[],receitas:[]}; saveAndSync(); alert('Sistema ativo restaurado.'); renderAllVisible(); }catch(err){ alert('JSON inválido'); } }; r.readAsText(f); }
+function importJSONFileAll(){ const f=document.getElementById('fileRestore').files[0]; if(!f) return alert('Selecione um arquivo'); const r=new FileReader(); r.onload=e=>{ try{ const obj=JSON.parse(e.target.result)||{}; dataStore=obj; _saveLocal(); if(db){ Object.keys(dataStore).forEach(s=>db.collection('sistemas').doc(s).set(dataStore[s]).catch(console.warn)); } alert('Todos os sistemas restaurados.'); renderAllVisible(); }catch(err){ alert('JSON inválido'); } }; r.readAsText(f); }
+async function restoreFromFirestore(){ if(!db) return alert('Firestore não configurado'); if(!confirm('Isto substituirá os dados locais do sistema ativo. Continuar?')) return; try{ const snap=await db.collection('sistemas').doc(sistemaAtivo).get(); if(!snap.exists){ alert('Documento não encontrado no Firestore'); return;} dataStore[sistemaAtivo]=snap.data()||{vendedores:{},despesas:[],receitas:[]}; _saveLocal(); alert('Dados restaurados do Firestore'); renderAllVisible(); }catch(e){ alert('Erro ao recuperar'); console.error(e); } }
+
+/**************** ZERAR SISTEMA ****************/
+function renderZerarSistema(){ const el=document.getElementById('slide-ZerarSistema'); el.innerHTML=`
+  <div class="card"><h3>Zerar Sistema - ${sistemaAtivo}</h3>
+    <p class="muted">Apaga todos os dados do sistema ativo. Protegido por senha de administrador.</p>
+    <div class="row"><div class="col small"><input id="zeroPass" type="password" placeholder="Senha admin (1552)"></div>
+    <div class="col small" style="align-self:end"><button class="danger" onclick="tryZerar()">Zerar</button></div></div>
+  </div>`; }
+function tryZerar(){ const p=document.getElementById('zeroPass').value; if(p!==USERS['Benedito'].senha) return alert('Senha inválida'); if(!confirm(`Confirma zerar todos os dados do sistema ${sistemaAtivo}?`)) return; dataStore[sistemaAtivo]={vendedores:{},despesas:[],receitas:[]}; saveAndSync(); alert('Sistema zerado.'); renderAllVisible(); }
+
+/**************** OUTROS ****************/
+function doLogout(){ currentUser=null; document.getElementById('appPanel').style.display='none'; document.getElementById('loginPanel').style.display='block'; document.getElementById('loginUser').value=''; document.getElementById('loginPass').value=''; document.getElementById('loginMsg').textContent=''; }
+function syncCurrentToFirestore(){ if(!db) return alert('Firestore não configurado'); db.collection('sistemas').doc(sistemaAtivo).set(dataStore[sistemaAtivo]||{}).then(()=>alert('Sincronizado')).catch(e=>alert('Erro: '+e.message)); }
+
+// inicializa estrutura de slides para evitar flash
+['SistemaAtivo','CadastroVendedores','CadastroDespesas','CadastroReceitas','Caixa','Relatorio','RelatorioFinal','Backup','ZerarSistema'].forEach(n=>{ if(!document.getElementById('slide-'+n)){ const d=document.createElement('div'); d.id='slide-'+n; d.className='slide'; slidesContainer.appendChild(d);} });
+</script>
+</body>
+</html>

@@ -70,6 +70,7 @@
         <select id="systemSelect" onchange="setSistemaAtivo(this.value)">
           <option value="PITIMBU">PITIMBU</option>
           <option value="TIMONHA">TIMONHA</option>
+ <option value="TIMONHA">TIMONHA</option>
         </select>
         <div class="toolbar">
           <button class="ghost" onclick="syncCurrentToFirestore()">Sync → Firestore</button>
@@ -349,3 +350,4 @@ function syncCurrentToFirestore(){ if(!db) return alert('Firestore não configur
 </script>
 </body>
 </html>
+

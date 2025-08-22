@@ -70,7 +70,7 @@
         <select id="systemSelect" onchange="setSistemaAtivo(this.value)">
           <option value="PITIMBU">PITIMBU</option>
           <option value="TIMONHA">TIMONHA</option>
- <option value="TIMONHA">TIMONHA</option>
+ <option value="DEZENA">DEZENA</option>
         </select>
         <div class="toolbar">
           <button class="ghost" onclick="syncCurrentToFirestore()">Sync → Firestore</button>
@@ -95,7 +95,7 @@ const firebaseConfig = { apiKey: "AIzaSyACfA9NivyAyiX_Jm-8x8DXZehqlVcbPkg", auth
 let db=null;try{ if(firebaseConfig.apiKey){ firebase.initializeApp(firebaseConfig); db=firebase.firestore(); } }catch(e){ console.warn('Firebase init falhou',e); }
 
 /**************** STATE ****************/
-const USERS={"Benedito":{senha:"1552",role:"admin"},"Pedro":{senha:"12345",role:"caixa"},"Jose":{senha:"12345",role:"caixa"}};
+const USERS={"Benedito":{senha:"155200",role:"admin"},"Pedro":{senha:"123456",role:"caixa"},"Jose":{senha:"12345",role:"caixa"}};
 let currentUser=null; let sistemaAtivo='PITIMBU';
 let dataStore={};
 function _loadLocal(){ try{dataStore=JSON.parse(localStorage.getItem('dataStore_v2')||'{}')}catch(e){dataStore={}}; if(!dataStore.PITIMBU) dataStore.PITIMBU={vendedores:{},despesas:[],receitas:[]}; if(!dataStore.TIMONHA) dataStore.TIMONHA={vendedores:{},despesas:[],receitas:[]}; }
@@ -135,6 +135,7 @@ function renderSistemaAtivo(){ ensureSystem(sistemaAtivo); const el=document.get
         <select id="selSystems">
           <option ${sistemaAtivo==='PITIMBU'?'selected':''} value="PITIMBU">PITIMBU</option>
           <option ${sistemaAtivo==='TIMONHA'?'selected':''} value="TIMONHA">TIMONHA</option>
+           <option ${sistemaAtivo==='DEZENA'?'selected':''} value="DEZENA">DEZENA</option>
         </select>
       </div>
       <div class="col small" style="align-self:end"><button onclick="switchSystem()">Trocar</button></div>
@@ -350,4 +351,5 @@ function syncCurrentToFirestore(){ if(!db) return alert('Firestore não configur
 </script>
 </body>
 </html>
+
 
